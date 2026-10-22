@@ -1,6 +1,7 @@
 # Zuri Beauty Lounge
 
 Salon website, booking system and admin panel. Plain PHP 8.2 + MySQL/MariaDB, no framework.
+Composer is used for PSR-4 autoloading (`Salon\` → `src/`) and for reading `.env`.
 
 ## Layout
 
@@ -11,23 +12,28 @@ migrations/    ordered .sql files, run by bin/migrate.php
 bin/           command-line tools
 storage/       logs and the generated app key (never served)
 legacy/        the old one-file site, kept for reference and blocked from the web
+vendor/        Composer packages, created by `composer install`
 ```
 
 ## First time setup
 
 ```
+composer install                needs Composer on your machine, not on the server
 copy .env.example .env        then fill in DB_USER, DB_PASS, DB_NAME
 php bin/migrate.php up --create-database
 php bin/admin.php create yourname --first=Your --role=owner
 ```
 
-`.env` and `storage/` are gitignored. If `APP_KEY` is left blank the app generates
-`storage/.appkey` itself; set `APP_KEY` to a 32+ character secret on a real server.
+`.env`, `vendor/` and `storage/` are gitignored. If `APP_KEY` is left blank the app
+generates `storage/.appkey` itself; set `APP_KEY` to a 32+ character secret on a real
+server. Deploying means uploading `vendor/` with the rest of the folder — the host does
+not need Composer, and the site will refuse to start until it is there.
 
 ## Everyday commands
 
 | Command | What it does |
 | --- | --- |
+| `composer install` | rebuild `vendor/` after a clone or a `composer.json` change |
 | `php bin/migrate.php status` | which migrations are applied, which are pending |
 | `php bin/migrate.php up` | apply pending migrations |
 | `php bin/migrate.php rollback --steps=1` | undo the last migration (uses its `-- @down` section) |

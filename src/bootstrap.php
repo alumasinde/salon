@@ -9,21 +9,16 @@ declare(strict_types=1);
 
 define('SALON_ROOT', dirname(__DIR__));
 
-require SALON_ROOT . '/src/Support/Env.php';
-require SALON_ROOT . '/src/Support/Config.php';
+$autoload = SALON_ROOT . '/vendor/autoload.php';
+if (!is_file($autoload)) {
+    http_response_code(503);
+    exit('Dependencies are missing. Run "composer install" in the project folder, then reload.');
+}
+require $autoload;
+
 require SALON_ROOT . '/src/helpers.php';
 
-Salon\Support\Env::load(SALON_ROOT . '/.env');
-
-spl_autoload_register(static function (string $class): void {
-    if (!str_starts_with($class, 'Salon\\')) {
-        return;
-    }
-    $path = SALON_ROOT . '/src/' . str_replace('\\', '/', substr($class, 6)) . '.php';
-    if (is_file($path)) {
-        require $path;
-    }
-});
+Dotenv\Dotenv::createImmutable(SALON_ROOT)->safeLoad();
 
 use Salon\Support\Config;
 

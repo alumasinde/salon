@@ -7,3 +7,11 @@ storage/cache/*
 # local secrets and generated keys
 storage/.appkey
 .env.local
+
+# Ignore IDE and editor files
+.idea/
+.vscode/
+
+# 
+# Composer packages: run `composer install` to rebuild, ship vendor/ when deploying
+vendor/
