@@ -17,17 +17,20 @@ function base_path(): string
     if ($base !== null) {
         return $base;
     }
-    $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
     $docRoot = str_replace('\\', '/', rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/'));
-    $file = str_replace('\\', '/', $_SERVER['SCRIPT_FILENAME'] ?? '');
-    $base = '';
-    if ($docRoot !== '' && str_starts_with($file, $docRoot)) {
-        $base = rtrim(substr($script, 0, strlen($file) - strlen($docRoot)), '/');
-    }
-    if ($base === '') {
-        $base = rtrim(dirname($script), '/');
-    }
-    return $base;
+    $file = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+
+    // Where the front controller sits relative to the document root, e.g. "/salon/public/index.php".
+    $dir = $docRoot !== '' && str_starts_with($file, $docRoot)
+        ? substr($file, strlen($docRoot))
+        : rtrim(dirname($script), '/');
+
+    // Browsers never see the front controller name or the public/ folder:
+    // /salon/public/index.php is reached as /salon.
+    $dir = (string) preg_replace('#/index\.php$#i', '', $dir);
+    $dir = (string) preg_replace('#/public$#i', '', $dir);
+    return $base = rtrim($dir, '/');
 }
 
 function url(string $path = ''): string

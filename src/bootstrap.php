@@ -19,7 +19,7 @@ spl_autoload_register(static function (string $class): void {
     if (!str_starts_with($class, 'Salon\\')) {
         return;
     }
-    $path = SALON_ROOT . '/src/' . str_replace('\\', '/', substr($class, 7)) . '.php';
+    $path = SALON_ROOT . '/src/' . str_replace('\\', '/', substr($class, 6)) . '.php';
     if (is_file($path)) {
         require $path;
     }
@@ -39,7 +39,7 @@ $logFile = SALON_ROOT . '/storage/logs/app.log';
 ini_set('error_log', $logFile);
 
 set_exception_handler(static function (Throwable $t) use ($logFile): void {
-    error_log('[' . date('Y-m-d H:i:s') . '] ' . $t::class . ': ' . $t->getMessage()
+    error_log($t::class . ': ' . $t->getMessage()
         . ' in ' . $t->getFile() . ':' . $t->getLine());
     if (PHP_SAPI === 'cli') {
         fwrite(STDERR, $t->getMessage() . PHP_EOL);
@@ -70,7 +70,7 @@ set_error_handler(static function (int $severity, string $message, string $file,
 define('SALON_NONCE', bin2hex(random_bytes(16)));
 
 if (PHP_SAPI !== 'cli' && !headers_sent()) {
-    $isHttps = !empty($_SERVER['HTTPS']) || $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' === 'https';
+    $isHttps = !empty($_SERVER['HTTPS']) || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
     header('Content-Security-Policy: default-src \'self\'; script-src \'self\' \'nonce-' . SALON_NONCE . '\'; '
         . "style-src 'self' 'nonce-" . SALON_NONCE . "' https://fonts.googleapis.com; "
         . "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "

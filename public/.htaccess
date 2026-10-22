@@ -1,10 +1,30 @@
 Options -Indexes
-<FilesMatch "^(config|db)\.php$|\.sql$">
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Real files (assets) are served directly.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else goes through the front controller.
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+<FilesMatch "^\.|\.(env|sql|md|log)$">
   Require all denied
 </FilesMatch>
+
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/css application/json
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
 </IfModule>
-<IfModule mod_headers.c>
-  Header set X-Content-Type-Options "nosniff"
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+  ExpiresByType text/html "access plus 0 seconds"
 </IfModule>

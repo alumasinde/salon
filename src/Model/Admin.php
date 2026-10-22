@@ -177,8 +177,9 @@ final class Admin
         }
         $role = $actor['role'] ?? 'staff';
         $matrix = [
-            'owner' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'settings', 'sms', 'admins', 'theme'],
-            'manager' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'sms', 'theme'],
+            'owner' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'settings', 'sms',
+                'admins', 'theme', 'activity'],
+            'manager' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'sms', 'theme', 'activity'],
             'staff' => ['bookings', 'theme'],
         ];
         return in_array($ability, $matrix[$role] ?? [], true);

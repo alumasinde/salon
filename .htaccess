@@ -3,6 +3,8 @@ Options -Indexes -MultiViews
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  # Old one-file site kept for reference only; never served.
+  RewriteRule ^legacy/ - [F,L]
   RewriteRule ^$ public/ [L]
   RewriteRule (.*) public/$1 [L]
 </IfModule>

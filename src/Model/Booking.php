@@ -26,12 +26,7 @@ final class Booking
 
     public static function create(array $d): array
     {
-        $service = null;
-        if (!empty($d['service_id'])) {
-            $service = Service::find((int) $d['service_id']);
-        } elseif (!empty($d['service_name'])) {
-            $service = Service::findByName((string) $d['service_name']);
-        }
+        $service = self::resolveService($d['service_id'] ?? null, (string) ($d['service_name'] ?? ''));
         $ref = self::generateRef();
         $id = Database::insert(
             'INSERT INTO bookings (ref_code, client_name, phone, email, service_id, service_name, service_price,
@@ -56,8 +51,16 @@ final class Booking
         return ['id' => $id, 'ref' => $ref, 'service' => $service];
     }
 
-    public static function normalizeTime(string $label): string
+    /** Prefer an id, fall back to matching the typed service name. */
+    private static function resolveService(mixed $id, string $name): ?array
     {
+        if (!empty($id)) {
+            return Service::find((int) $id);
+        }
+        return $name === '' ? null : Service::findByName($name);
+    }
+
+    public static function normalizeTime(string $label): string    {
         $label = strtolower(str_replace('.', '', trim($label)));
         $ts = strtotime($label);
         return $ts === false ? $label : date('g:i a', $ts);
@@ -108,7 +111,7 @@ final class Booking
 
     public static function update(int $id, array $d): void
     {
-        $service = !empty($d['service_id']) ? Service::find((int) $d['service_id']) : null;
+        $service = self::resolveService($d['service_id'] ?? null, (string) ($d['service_name'] ?? ''));
         Database::exec(
             'UPDATE bookings SET client_name=?, phone=?, email=?, service_id=?, service_name=?, service_price=?,
                 booking_date=?, booking_time=?, notes=?, status_id=? WHERE id=?',
@@ -117,7 +120,7 @@ final class Booking
                 Phone::normalize((string) ($d['phone'] ?? '')) ?? (string) $d['phone'],
                 mb_substr(trim($d['email'] ?? ''), 0, 160),
                 $service['id'] ?? null,
-                mb_substr((string) ($d['service_name'] ?? $service['name'] ?? ''), 0, 120),
+                mb_substr((string) ($service['name'] ?? ($d['service_name'] ?? '')), 0, 120),
                 max(0, (int) ($service['price'] ?? ($d['service_price'] ?? 0))),
                 $d['booking_date'] ?? date('Y-m-d'),
                 self::normalizeTime((string) ($d['booking_time'] ?? '')),
@@ -216,6 +219,14 @@ final class Booking
                 'SELECT service_name, COUNT(*) AS total FROM bookings
                  GROUP BY service_name ORDER BY total DESC LIMIT 5'),
         ];
+    }
+
+    public static function awaitingCount(): int
+    {
+        $newId = BookingStatus::idForCode('new');
+        return (int) (Database::value(
+            'SELECT COUNT(*) FROM bookings WHERE status_id = ? AND booking_date >= CURDATE()',
+            [$newId ?? 0]) ?? 0);
     }
 
     public static function recent(int $limit = 8): array

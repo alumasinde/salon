@@ -3,3 +3,7 @@ storage/logs/*
 storage/cache/*
 !storage/logs/.gitkeep
 !storage/cache/.gitkeep
+
+# local secrets and generated keys
+storage/.appkey
+.env.local
