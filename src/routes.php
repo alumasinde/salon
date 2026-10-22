@@ -14,6 +14,7 @@ use Salon\Controller\Admin\SmsController;
 use Salon\Controller\Admin\StatusController;
 use Salon\Controller\Admin\TeamController;
 use Salon\Controller\Admin\ThemeController;
+use Salon\Controller\Admin\TenantController;
 use Salon\Controller\BookingController;
 use Salon\Controller\SiteController;
 use Salon\Http\Request;
@@ -38,6 +39,7 @@ function salon_routes(): Router
     $team = new TeamController();
     $theme = new ThemeController();
     $activity = new ActivityController();
+    $tenants = new TenantController();
 
     // Public site
     $router->get('/', fn (Request $r) => $site->home($r));
@@ -103,6 +105,15 @@ function salon_routes(): Router
     $router->post('/admin/theme/save', fn (Request $r) => $theme->save($r));
     $router->post('/admin/theme/password', fn (Request $r) => $theme->password($r));
     $router->get('/admin/activity', fn (Request $r) => $activity->index($r));
+
+    // Tenant management (platform admin only)
+    $router->get('/admin/tenants', fn (Request $r) => $tenants->index($r));
+    $router->get('/admin/tenants/new', fn (Request $r) => $tenants->create($r));
+    $router->post('/admin/tenants/new', fn (Request $r) => $tenants->create($r));
+    $router->post('/admin/tenants/delete', fn (Request $r) => $tenants->delete($r));
+    $router->get('/admin/tenants/{id}', fn (Request $r, string $id) => $tenants->edit($r, $id));
+    $router->post('/admin/tenants/{id}', fn (Request $r, string $id) => $tenants->edit($r, $id));
+    $router->get('/admin/tenants/{id}/stats', fn (Request $r, string $id) => $tenants->stats($r, $id));
 
     $router->notFound(fn (Request $r, string $message) => View::render('site/not_found',
         ['message' => $message, 'settings' => \Salon\Model\Setting::all(), 'text' => [], 'nonce' => SALON_NONCE],

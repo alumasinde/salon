@@ -5,13 +5,26 @@ declare(strict_types=1);
 namespace Salon\Model;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 use Salon\Support\Color;
 use Salon\Support\Config;
 
 /** Admin accounts, roles and the personal colour theme each admin picks. */
 final class Admin
 {
-    public const ROLES = ['owner' => 'Owner', 'manager' => 'Manager', 'staff' => 'Staff'];
+    public const ROLES = ['platform' => 'Platform', 'owner' => 'Owner', 'manager' => 'Manager', 'staff' => 'Staff'];
+
+    /** Everything a role can be given. "tenants" is the platform-level ability. */
+    public const ABILITIES = ['bookings', 'services', 'statuses', 'schedule', 'content', 'settings', 'sms',
+        'admins', 'theme', 'activity', 'tenants'];
+
+    private const ROLE_MATRIX = [
+        'platform' => self::ABILITIES,
+        'owner' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'settings', 'sms',
+            'admins', 'theme', 'activity'],
+        'manager' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'sms', 'theme', 'activity'],
+        'staff' => ['bookings', 'theme'],
+    ];
 
     /** The house palette: these are the colours the site already shipped with. */
     public const PRESETS = [
@@ -24,26 +37,30 @@ final class Admin
 
     public static function find(int $id): ?array
     {
-        return Database::one('SELECT * FROM admins WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM admins WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 
     public static function findByUsername(string $username): ?array
     {
-        return Database::one('SELECT * FROM admins WHERE username = ? AND active = 1', [$username]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM admins WHERE username = ? AND active = 1 AND tenant_id = ?', [$username, $tenantId]);
     }
 
     public static function all(): array
     {
+        $tenantId = TenantResolver::getId();
         return Database::all('SELECT id, first_name, last_name, username, email, phone, role, active, sms_opt_in,
             theme_preset, theme_primary, theme_accent, theme_bg, theme_surface, theme_text, last_login_at
-            FROM admins ORDER BY role, first_name');
+            FROM admins WHERE tenant_id = ? ORDER BY role, first_name', [$tenantId]);
     }
 
     /** Admins who asked to receive booking SMS. */
     public static function smsRecipients(): array
     {
+        $tenantId = TenantResolver::getId();
         return Database::all('SELECT id, first_name, phone FROM admins WHERE active = 1 AND sms_opt_in = 1
-            AND phone <> ? ORDER BY id', ['']);
+            AND phone <> ? AND tenant_id = ? ORDER BY id', ['', $tenantId]);
     }
 
     public static function hash(string $plain): string
@@ -56,10 +73,12 @@ final class Admin
 
     public static function create(array $d): int
     {
+        $tenantId = TenantResolver::getId();
         return Database::insert(
-            'INSERT INTO admins (first_name, last_name, username, email, phone, pass_hash, role, active,
-                sms_opt_in, force_password_change, theme_preset) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO admins (tenant_id, first_name, last_name, username, email, phone, pass_hash, role, active,
+                sms_opt_in, force_password_change, theme_preset) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
             [
+                $tenantId,
                 mb_substr(trim($d['first_name'] ?? ''), 0, 60),
                 mb_substr(trim($d['last_name'] ?? ''), 0, 60),
                 strtolower(mb_substr(trim($d['username'] ?? ''), 0, 60)),
@@ -165,9 +184,14 @@ final class Admin
         return $theme;
     }
 
+    /** Accounts that can still manage the team, used to protect the last one. */
     public static function countOwners(): int
     {
-        return (int) (Database::value('SELECT COUNT(*) FROM admins WHERE role = ? AND active = 1', ['owner']) ?? 0);
+        $tenantId = TenantResolver::getId();
+        return (int) (Database::value(
+            "SELECT COUNT(*) FROM admins WHERE role IN ('platform', 'owner') AND active = 1 AND tenant_id = ?",
+            [$tenantId]
+        ) ?? 0);
     }
 
     public static function canManage(?array $actor, string $ability = 'admins'): bool
@@ -175,13 +199,6 @@ final class Admin
         if ($actor === null) {
             return false;
         }
-        $role = $actor['role'] ?? 'staff';
-        $matrix = [
-            'owner' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'settings', 'sms',
-                'admins', 'theme', 'activity'],
-            'manager' => ['bookings', 'services', 'statuses', 'schedule', 'content', 'sms', 'theme', 'activity'],
-            'staff' => ['bookings', 'theme'],
-        ];
-        return in_array($ability, $matrix[$role] ?? [], true);
+        return in_array($ability, self::ROLE_MATRIX[$actor['role'] ?? 'staff'] ?? [], true);
     }
 }

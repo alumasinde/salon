@@ -26,6 +26,17 @@ abstract class AdminController extends Controller
         ], 'layout_admin');
     }
 
+    /** Refuses an ability the signed-in account does not hold, rendered with the panel chrome. */
+    protected function guard(string $ability = ''): array
+    {
+        $admin = parent::guard($ability);
+        if ($ability !== '' && !Auth::can($ability)) {
+            http_response_code(403);
+            exit($this->render('admin/denied', 'Access denied', [], ''));
+        }
+        return $admin;
+    }
+
     /** @return array<int, array{label:string,path:string,key:string,badge?:int}> */
     private function nav(): array
     {
@@ -45,6 +56,7 @@ abstract class AdminController extends Controller
             ['label' => 'Settings', 'path' => 'admin/settings', 'key' => 'admin/settings', 'ability' => 'settings'],
             ['label' => 'Team', 'path' => 'admin/team', 'key' => 'admin/team', 'ability' => 'admins'],
             ['label' => 'Activity', 'path' => 'admin/activity', 'key' => 'admin/activity', 'ability' => 'activity'],
+            ['label' => 'Tenants', 'path' => 'admin/tenants', 'key' => 'admin/tenants', 'ability' => 'tenants'],
         ];
         $nav = [];
         foreach ($items as $item) {

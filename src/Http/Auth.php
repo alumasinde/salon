@@ -136,8 +136,8 @@ final class Auth
 
     private static function record(string $identifier, string $ip, bool $ok): void
     {
-        Database::exec('INSERT INTO login_attempts (identifier, ip, successful) VALUES (?,?,?)',
-            [$identifier, $ip, $ok ? 1 : 0]);
+        Database::exec('INSERT INTO login_attempts (tenant_id, identifier, ip, successful) VALUES (?,?,?,?)',
+            [TenantResolver::idOrNull(), $identifier, $ip, $ok ? 1 : 0]);
         Database::exec('DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL 1 DAY');
     }
 

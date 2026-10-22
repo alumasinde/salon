@@ -39,6 +39,7 @@ abstract class Controller
         }
     }
 
+    /** Sign-in and forced-password checks. AdminController adds the ability check on top. */
     protected function guard(string $ability = ''): array
     {
         $admin = Auth::user();
@@ -48,10 +49,6 @@ abstract class Controller
         if (Auth::mustChangePassword() && !in_array($ability, ['', 'theme', 'password'], true)) {
             Flash::push('Choose a new password before continuing.', 'err');
             redirect('admin/theme');
-        }
-        if ($ability !== '' && !Auth::can($ability)) {
-            http_response_code(403);
-            exit($this->view('admin/denied', ['admin' => $admin], 'layout_admin'));
         }
         return $admin;
     }

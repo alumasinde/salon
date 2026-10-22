@@ -8,12 +8,14 @@ use Salon\Http\Activity;
 use Salon\Http\AdminController;
 use Salon\Http\Flash;
 use Salon\Http\Request;
+use Salon\Http\TenantResolver;
 use Salon\Http\Validator;
 use Salon\Model\Booking;
 use Salon\Model\BookingStatus;
 use Salon\Model\Schedule;
 use Salon\Model\Service;
 use Salon\Model\Setting;
+use Salon\Model\Tenant;
 use Salon\Sms\Gateway;
 use Salon\Sms\SmsService;
 
@@ -88,6 +90,11 @@ final class BookingAdminController extends AdminController
             && (int) (BookingStatus::find($statusId)['counts_as_booked'] ?? 0) === 1) {
             Flash::push("That slot already holds $capacity bookings. Change the time or a status first.", 'err');
             redirect($id === '' ? 'admin/bookings/new' : 'admin/bookings/' . (int) $id);
+        }
+
+        if ($existing === null && !Tenant::canAddBooking(TenantResolver::getId())) {
+            Flash::push('This salon has reached its monthly booking limit. Add a plan allowance under Tenants first.', 'err');
+            redirect('admin/bookings/new');
         }
 
         $payload = [

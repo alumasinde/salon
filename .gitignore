@@ -12,6 +12,7 @@ storage/.appkey
 .idea/
 .vscode/
 
-# 
-# Composer packages: run `composer install` to rebuild, ship vendor/ when deploying
+# Vendor directory
 vendor/
+# Ignore node_modules
+node_modules/

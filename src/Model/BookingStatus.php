@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Salon\Model;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 use Salon\Support\Color;
 
 /** Configurable booking workflow states (the admin panel edits these, code reads `code`). */
@@ -12,36 +13,42 @@ final class BookingStatus
 {
     public static function all(): array
     {
-        return Database::all('SELECT * FROM booking_statuses ORDER BY sort, id');
+        $tenantId = TenantResolver::getId();
+        return Database::all('SELECT * FROM booking_statuses WHERE tenant_id = ? ORDER BY sort, id', [$tenantId]);
     }
 
     public static function active(): array
     {
-        return Database::all('SELECT * FROM booking_statuses WHERE active = 1 ORDER BY sort, id');
+        $tenantId = TenantResolver::getId();
+        return Database::all('SELECT * FROM booking_statuses WHERE active = 1 AND tenant_id = ? ORDER BY sort, id', [$tenantId]);
     }
 
     public static function find(int $id): ?array
     {
-        return Database::one('SELECT * FROM booking_statuses WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM booking_statuses WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 
     public static function byCode(string $code): ?array
     {
-        return Database::one('SELECT * FROM booking_statuses WHERE code = ?', [$code]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM booking_statuses WHERE code = ? AND tenant_id = ?', [$code, $tenantId]);
     }
 
     public static function defaultId(): int
     {
-        $id = Database::value('SELECT id FROM booking_statuses WHERE is_default = 1 AND active = 1 LIMIT 1')
-            ?? Database::value('SELECT id FROM booking_statuses WHERE code = ? AND active = 1 LIMIT 1', ['new'])
-            ?? Database::value('SELECT id FROM booking_statuses ORDER BY sort, id LIMIT 1');
+        $tenantId = TenantResolver::getId();
+        $id = Database::value('SELECT id FROM booking_statuses WHERE is_default = 1 AND active = 1 AND tenant_id = ? LIMIT 1', [$tenantId])
+            ?? Database::value('SELECT id FROM booking_statuses WHERE code = ? AND active = 1 AND tenant_id = ? LIMIT 1', ['new', $tenantId])
+            ?? Database::value('SELECT id FROM booking_statuses WHERE tenant_id = ? ORDER BY sort, id LIMIT 1', [$tenantId]);
         return (int) $id;
     }
 
     /** Status ids that occupy a time slot for capacity checks. */
     public static function bookedIds(): array
     {
-        $ids = Database::all('SELECT id FROM booking_statuses WHERE counts_as_booked = 1 AND active = 1');
+        $tenantId = TenantResolver::getId();
+        $ids = Database::all('SELECT id FROM booking_statuses WHERE counts_as_booked = 1 AND active = 1 AND tenant_id = ?', [$tenantId]);
         return array_map('intval', array_column($ids, 'id'));
     }
 
@@ -58,7 +65,9 @@ final class BookingStatus
 
     public static function save(array $data, int $id = 0): int
     {
+        $tenantId = TenantResolver::getId();
         $fields = [
+            'tenant_id' => $tenantId,
             'code' => strtolower(preg_replace('/[^a-z0-9_]/i', '', $data['code'] ?? '') ?? ''),
             'name' => mb_substr(trim($data['name'] ?? ''), 0, 60),
             'color' => Color::normalize($data['color'] ?? '#6f5d6b', '#6f5d6b'),
@@ -74,8 +83,8 @@ final class BookingStatus
         if ($id > 0) {
             Database::exec(
                 'UPDATE booking_statuses SET code=?, name=?, color=?, text_color=?, sort=?,
-                 counts_as_booked=?, is_default=?, active=? WHERE id=?',
-                [...array_values($fields), $id]
+                 counts_as_booked=?, is_default=?, active=? WHERE id=? AND tenant_id=?',
+                [...array_values($fields), $id, $tenantId]
             );
             return $id;
         }
@@ -86,12 +95,13 @@ final class BookingStatus
 
     public static function delete(int $id): bool
     {
-        if ((int) (Database::value('SELECT COUNT(*) FROM booking_statuses') ?? 1) <= 1) {
+        $tenantId = TenantResolver::getId();
+        if ((int) (Database::value('SELECT COUNT(*) FROM booking_statuses WHERE tenant_id = ?', [$tenantId]) ?? 1) <= 1) {
             return false;
         }
-        if ((int) (Database::value('SELECT COUNT(*) FROM bookings WHERE status_id = ?', [$id]) ?? 0) > 0) {
+        if ((int) (Database::value('SELECT COUNT(*) FROM bookings WHERE status_id = ? AND tenant_id = ?', [$id, $tenantId]) ?? 0) > 0) {
             return false;
         }
-        return Database::exec('DELETE FROM booking_statuses WHERE id = ?', [$id]) > 0;
+        return Database::exec('DELETE FROM booking_statuses WHERE id = ? AND tenant_id = ?', [$id, $tenantId]) > 0;
     }
 }

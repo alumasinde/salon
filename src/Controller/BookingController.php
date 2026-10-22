@@ -14,6 +14,8 @@ use Salon\Model\BookingStatus;
 use Salon\Model\Schedule;
 use Salon\Model\Service;
 use Salon\Model\Setting;
+use Salon\Model\Tenant;
+use Salon\Http\TenantResolver;
 use Salon\Sms\SmsService;
 use Salon\Support\Phone;
 
@@ -75,13 +77,17 @@ final class BookingController extends Controller
         }
 
         $ip = $request->ip;
-        if ($this->tooMany($ip, $phone)) {
+        $tenantId = TenantResolver::getId();
+        if ($this->tooMany($ip, $phone, $tenantId)) {
             return $this->json(['ok' => false, 'msg' => 'Too many requests. Please call or WhatsApp us instead.'], 429);
+        }
+        if (!Tenant::canAddBooking($tenantId)) {
+            return $this->json(['ok' => false, 'msg' => 'This salon has taken all its bookings for the month. Please call us instead.'], 409);
         }
 
         $capacity = max(1, Setting::int('capacity', 2));
         $bookedIds = BookingStatus::bookedIds();
-        $lock = 'salon_slot_' . substr(md5($date . '|' . $time), 0, 24);
+        $lock = 'salon_slot_' . substr(md5($tenantId . '|' . $date . '|' . $time), 0, 24);
         $locked = (string) (Database::value('SELECT GET_LOCK(?, 4)', [$lock]) ?? '0') === '1';
 
         try {
@@ -133,12 +139,14 @@ final class BookingController extends Controller
         return is_numeric($value) ? Service::find((int) $value) : null;
     }
 
-    private function tooMany(string $ip, string $phone): bool
+    private function tooMany(string $ip, string $phone, int $tenantId): bool
     {
         $byIp = (int) (Database::value(
-            'SELECT COUNT(*) FROM bookings WHERE ip = ? AND created_at > NOW() - INTERVAL 1 HOUR', [$ip]) ?? 0);
+            'SELECT COUNT(*) FROM bookings WHERE ip = ? AND tenant_id = ? AND created_at > NOW() - INTERVAL 1 HOUR',
+            [$ip, $tenantId]) ?? 0);
         $byPhone = (int) (Database::value(
-            'SELECT COUNT(*) FROM bookings WHERE phone = ? AND booking_date = CURDATE()', [$phone]) ?? 0);
+            'SELECT COUNT(*) FROM bookings WHERE phone = ? AND tenant_id = ? AND booking_date = CURDATE()',
+            [$phone, $tenantId]) ?? 0);
         return $byIp >= 5 || $byPhone >= 3;
     }
 }

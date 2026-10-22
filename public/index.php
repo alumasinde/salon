@@ -7,8 +7,9 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 require dirname(__DIR__) . '/src/routes.php';
 
+use Salon\DB\Database;
 use Salon\Http\Request;
-use Salon\Model\Setting;
+use Salon\Http\TenantResolver;
 
 $request = new Request();
 
@@ -17,7 +18,9 @@ if ($request->isSecure()) {
 }
 
 try {
-    Setting::all();
+    // Checks the database and its tables without needing a tenant, so a missing
+    // installation reports itself as that rather than as an unknown site.
+    Database::value('SELECT COUNT(*) FROM settings');
 } catch (Throwable $t) {
     http_response_code(503);
     header('Content-Type: text/html; charset=utf-8');
@@ -30,5 +33,9 @@ try {
         . '</body>';
     exit;
 }
+
+// Every page belongs to one salon. Stop here on an unknown host instead of letting
+// a model fail half way through rendering.
+TenantResolver::require();
 
 echo salon_routes()->dispatch($request);

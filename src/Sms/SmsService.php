@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Salon\Sms;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 use Salon\Model\Admin;
 use Salon\Model\Setting;
 use Salon\Support\Phone;
@@ -113,8 +114,8 @@ final class SmsService
     public static function retryFailed(int $limit = 20): array
     {
         $rows = Database::all(
-            'SELECT * FROM sms_queue WHERE status = ? AND attempts < 4 ORDER BY id DESC LIMIT '
-            . max(1, min(100, $limit)), ['failed']
+            'SELECT * FROM sms_queue WHERE status = ? AND tenant_id = ? AND attempts < 4 ORDER BY id DESC LIMIT '
+            . max(1, min(100, $limit)), ['failed', TenantResolver::idOrNull()]
         );
         $config = Gateway::config();
         $counts = ['retried' => 0, 'sent' => 0, 'failed' => 0];
@@ -138,7 +139,8 @@ final class SmsService
 
     public static function recent(int $limit = 40): array
     {
-        return Database::all('SELECT * FROM sms_queue ORDER BY id DESC LIMIT ' . max(1, min(200, $limit)));
+        return Database::all('SELECT * FROM sms_queue WHERE tenant_id = ? ORDER BY id DESC LIMIT '
+            . max(1, min(200, $limit)), [TenantResolver::idOrNull()]);
     }
 
     public static function forBooking(int $bookingId): array
@@ -149,7 +151,9 @@ final class SmsService
     public static function todayStats(): array
     {
         $rows = Database::all(
-            "SELECT status, COUNT(*) AS total FROM sms_queue WHERE created_at >= CURDATE() GROUP BY status"
+            'SELECT status, COUNT(*) AS total FROM sms_queue
+             WHERE created_at >= CURDATE() AND tenant_id = ? GROUP BY status',
+            [TenantResolver::idOrNull()]
         );
         $out = ['sent' => 0, 'failed' => 0, 'queued' => 0, 'skipped' => 0];
         foreach ($rows as $row) {
@@ -160,19 +164,20 @@ final class SmsService
 
     private static function record(array $to, string $message, int $bookingId, string $status, string $response, ?int $updateId): int
     {
+        $tenantId = TenantResolver::idOrNull();
         if ($updateId !== null && $updateId > 0) {
             Database::exec(
                 'UPDATE sms_queue SET status = ?, provider_response = ?, error = ?, attempts = attempts + 1,
-                 sent_at = ? WHERE id = ?',
+                 sent_at = ? WHERE id = ? AND tenant_id = ?',
                 [$status, mb_substr($response, 0, 255), $status === 'sent' ? '' : mb_substr($response, 0, 255),
-                    $status === 'sent' ? date('Y-m-d H:i:s') : null, $updateId]
+                    $status === 'sent' ? date('Y-m-d H:i:s') : null, $updateId, $tenantId]
             );
             return $updateId;
         }
         return Database::insert(
-            'INSERT INTO sms_queue (booking_id, to_number, recipient_label, message, status, provider_response, error)
-             VALUES (?,?,?,?,?,?,?)',
-            [$bookingId > 0 ? $bookingId : null, $to['number'], $to['label'], $message, $status,
+            'INSERT INTO sms_queue (tenant_id, booking_id, to_number, recipient_label, message, status, provider_response, error)
+             VALUES (?,?,?,?,?,?,?,?)',
+            [$tenantId, $bookingId > 0 ? $bookingId : null, $to['number'], $to['label'], $message, $status,
                 mb_substr($response, 0, 255), $status === 'sent' ? '' : mb_substr($response, 0, 255)]
         );
     }

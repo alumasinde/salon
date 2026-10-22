@@ -12,8 +12,9 @@ final class Activity
     public static function log(?int $adminId, string $action, string $detail = '', string $ip = ''): void
     {
         try {
-            Database::exec('INSERT INTO activity_log (admin_id, action, detail, ip) VALUES (?,?,?,?)',
-                [$adminId, mb_substr($action, 0, 60), mb_substr($detail, 0, 255), mb_substr($ip, 0, 45)]);
+            Database::exec('INSERT INTO activity_log (tenant_id, admin_id, action, detail, ip) VALUES (?,?,?,?,?)',
+                [TenantResolver::idOrNull(), $adminId, mb_substr($action, 0, 60),
+                    mb_substr($detail, 0, 255), mb_substr($ip, 0, 45)]);
         } catch (\Throwable) {
             // Auditing must never break the action being audited.
         }
@@ -23,7 +24,8 @@ final class Activity
     {
         return Database::all(
             'SELECT a.*, ad.username FROM activity_log a LEFT JOIN admins ad ON ad.id = a.admin_id
-             ORDER BY a.id DESC LIMIT ' . max(1, min(100, $limit))
+             WHERE a.tenant_id = ? ORDER BY a.id DESC LIMIT ' . max(1, min(100, $limit)),
+            [TenantResolver::getId()]
         );
     }
 }

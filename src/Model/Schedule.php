@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Salon\Model;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 use Salon\Support\Clock;
 
 /** Opening hours, calendar overrides and bookable slots. */
@@ -14,7 +15,8 @@ final class Schedule
 
     public static function byDay(): array
     {
-        $rows = Database::all('SELECT * FROM opening_hours');
+        $tenantId = TenantResolver::getId();
+        $rows = Database::all('SELECT * FROM opening_hours WHERE tenant_id = ?', [$tenantId]);
         $map = [];
         foreach ($rows as $row) {
             $map[(int) $row['day_of_week']] = $row;
@@ -72,7 +74,8 @@ final class Schedule
 
     public static function forDate(string $date): array
     {
-        $special = Database::one('SELECT * FROM special_days WHERE `date` = ?', [$date]);
+        $tenantId = TenantResolver::getId();
+        $special = Database::one('SELECT * FROM special_days WHERE `date` = ? AND tenant_id = ?', [$date, $tenantId]);
         if ($special !== null) {
             return [
                 'closed' => (int) $special['closed'] === 1,
@@ -142,11 +145,13 @@ final class Schedule
 
     public static function save(int $dayOfWeek, array $data): void
     {
+        $tenantId = TenantResolver::getId();
         Database::exec(
-            'INSERT INTO opening_hours (day_of_week, opens, closes, closed, note) VALUES (?,?,?,?,?)
+            'INSERT INTO opening_hours (tenant_id, day_of_week, opens, closes, closed, note) VALUES (?,?,?,?,?,?)
              ON DUPLICATE KEY UPDATE opens = VALUES(opens), closes = VALUES(closes),
                  closed = VALUES(closed), note = VALUES(note)',
             [
+                $tenantId,
                 $dayOfWeek,
                 $data['opens'] ?? '08:00:00',
                 $data['closes'] ?? '20:00:00',
@@ -158,12 +163,15 @@ final class Schedule
 
     public static function specials(): array
     {
-        return Database::all('SELECT * FROM special_days WHERE `date` >= CURDATE() ORDER BY `date`');
+        $tenantId = TenantResolver::getId();
+        return Database::all('SELECT * FROM special_days WHERE tenant_id = ? AND `date` >= CURDATE() ORDER BY `date`', [$tenantId]);
     }
 
     public static function saveSpecial(array $data, int $id = 0): void
     {
+        $tenantId = TenantResolver::getId();
         $fields = [
+            'tenant_id' => $tenantId,
             'date' => $data['date'] ?? date('Y-m-d'),
             'closed' => !empty($data['closed']) ? 1 : 0,
             'opens' => ($data['opens'] ?? '') === '' ? null : $data['opens'],
@@ -171,12 +179,12 @@ final class Schedule
             'label' => mb_substr(trim($data['label'] ?? ''), 0, 80),
         ];
         if ($id > 0) {
-            Database::exec('UPDATE special_days SET `date`=?, closed=?, opens=?, closes=?, label=? WHERE id=?',
-                [...array_values($fields), $id]);
+            Database::exec('UPDATE special_days SET `date`=?, closed=?, opens=?, closes=?, label=? WHERE id=? AND tenant_id=?',
+                [...array_values($fields), $id, $tenantId]);
             return;
         }
         Database::exec(
-            'INSERT INTO special_days (`date`, closed, opens, closes, label) VALUES (?,?,?,?,?)
+            'INSERT INTO special_days (tenant_id, `date`, closed, opens, closes, label) VALUES (?,?,?,?,?,?)
              ON DUPLICATE KEY UPDATE closed = VALUES(closed), opens = VALUES(opens),
                  closes = VALUES(closes), label = VALUES(label)',
             array_values($fields)
@@ -185,6 +193,7 @@ final class Schedule
 
     public static function deleteSpecial(int $id): void
     {
-        Database::exec('DELETE FROM special_days WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        Database::exec('DELETE FROM special_days WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 }

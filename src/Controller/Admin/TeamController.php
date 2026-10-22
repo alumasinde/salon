@@ -9,18 +9,31 @@ use Salon\Http\AdminController;
 use Salon\Http\Auth;
 use Salon\Http\Flash;
 use Salon\Http\Request;
+use Salon\Http\TenantResolver;
 use Salon\Http\Validator;
 use Salon\Model\Admin;
+use Salon\Model\Tenant;
 
 /** Team management: accounts, roles, SMS opt-in. Owners only. */
 final class TeamController extends AdminController
 {
     public function index(Request $request): string
     {
+        $actor = $this->guard('admins');
         return $this->render('admin/team', 'Team', [
             'rows' => Admin::all(),
-            'roles' => Admin::ROLES,
+            'roles' => $this->roleOptions($actor),
         ], 'admins');
+    }
+
+    /** Only a platform account may hand out the platform role. */
+    private function roleOptions(array $actor): array
+    {
+        $roles = Admin::ROLES;
+        if (!Admin::canManage($actor, 'tenants')) {
+            unset($roles['platform']);
+        }
+        return $roles;
     }
 
     public function save(Request $request): string
@@ -30,16 +43,21 @@ final class TeamController extends AdminController
         $this->requireCsrf();
         $id = (int) ($_POST['id'] ?? 0);
         $target = $id > 0 ? Admin::find($id) : null;
+        $roles = $this->roleOptions($actor);
         $validator = Validator::make($_POST, [
             'first_name' => 'required|max:60',
             'last_name' => 'max:60',
             'username' => 'required|max:60',
             'email' => 'email|max:160',
             'phone' => 'phone',
-            'role' => 'in:' . implode(',', array_keys(Admin::ROLES)),
+            'role' => 'in:' . implode(',', array_keys($roles)),
         ]);
         if ($validator->fails()) {
             Flash::push($validator->first(), 'err');
+            redirect('admin/team');
+        }
+        if ($id === 0 && !Tenant::canAddAdmin(TenantResolver::getId())) {
+            Flash::push('This salon has reached its limit of admin accounts.', 'err');
             redirect('admin/team');
         }
         if ($id === 0 && strlen((string) ($_POST['password'] ?? '')) < 10) {
@@ -54,9 +72,10 @@ final class TeamController extends AdminController
             Flash::push('That account no longer exists.', 'err');
             redirect('admin/team');
         }
-        if ($id > 0 && (int) $actor['id'] === $id && (empty($_POST['active']) || $validator->value('role') !== 'owner')
+        $privileged = in_array($validator->value('role'), ['owner', 'platform'], true);
+        if ($id > 0 && (int) $actor['id'] === $id && (!$privileged || empty($_POST['active']))
             && Admin::countOwners() <= 1) {
-            Flash::push('You are the last owner. Promote someone else before changing your own role or status.', 'err');
+            Flash::push('You are the last account that can manage the team. Promote someone else first.', 'err');
             redirect('admin/team');
         }
         if ($id > 0) {
@@ -97,8 +116,9 @@ final class TeamController extends AdminController
         $this->requirePost($request);
         $actor = $this->guard('admins');
         $this->requireCsrf();
-        \Salon\DB\Database::exec('DELETE FROM login_attempts WHERE identifier = ? OR ip = ?',
-            [mb_strtolower(trim((string) ($_POST['username'] ?? ''))), (string) ($_POST['ip'] ?? '')]);
+        \Salon\DB\Database::exec('DELETE FROM login_attempts WHERE (identifier = ? OR ip = ?) AND tenant_id = ?',
+            [mb_strtolower(trim((string) ($_POST['username'] ?? ''))), (string) ($_POST['ip'] ?? ''),
+                TenantResolver::getId()]);
         Activity::log((int) $actor['id'], 'login_unlock', (string) ($_POST['username'] ?? ''), $request->ip);
         Flash::push('Login attempts cleared.');
         redirect('admin/team');

@@ -5,38 +5,45 @@ declare(strict_types=1);
 namespace Salon\Model;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 
 /** Service catalogue and categories. */
 final class Service
 {
     public static function categories(bool $activeOnly = false): array
     {
-        $sql = 'SELECT * FROM service_categories';
-        $sql .= $activeOnly ? ' WHERE active = 1' : '';
-        return Database::all($sql . ' ORDER BY sort, id');
+        $tenantId = TenantResolver::getId();
+        $sql = 'SELECT * FROM service_categories WHERE tenant_id = ?';
+        $sql .= $activeOnly ? ' AND active = 1' : '';
+        return Database::all($sql . ' ORDER BY sort, id', [$tenantId]);
     }
 
     public static function category(int $id): ?array
     {
-        return Database::one('SELECT * FROM service_categories WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM service_categories WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 
     public static function active(): array
     {
+        $tenantId = TenantResolver::getId();
         return Database::all(
             'SELECT s.*, c.name AS category FROM services s
-             LEFT JOIN service_categories c ON c.id = s.category_id
-             WHERE s.active = 1 ORDER BY c.sort, s.sort, s.id'
+             LEFT JOIN service_categories c ON c.id = s.category_id AND c.tenant_id = s.tenant_id
+             WHERE s.active = 1 AND s.tenant_id = ? ORDER BY c.sort, s.sort, s.id',
+            [$tenantId]
         );
     }
 
     public static function all(): array
     {
+        $tenantId = TenantResolver::getId();
         return Database::all(
             'SELECT s.*, c.name AS category, COUNT(b.id) AS booking_count FROM services s
-             LEFT JOIN service_categories c ON c.id = s.category_id
-             LEFT JOIN bookings b ON b.service_id = s.id
-             GROUP BY s.id ORDER BY c.sort, s.sort, s.id'
+             LEFT JOIN service_categories c ON c.id = s.category_id AND c.tenant_id = s.tenant_id
+             LEFT JOIN bookings b ON b.service_id = s.id AND b.tenant_id = s.tenant_id
+             WHERE s.tenant_id = ? GROUP BY s.id ORDER BY c.sort, s.sort, s.id',
+            [$tenantId]
         );
     }
 
@@ -53,19 +60,23 @@ final class Service
 
     public static function find(int $id): ?array
     {
-        return Database::one('SELECT * FROM services WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM services WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 
     public static function findByName(string $name): ?array
     {
-        return Database::one('SELECT * FROM services WHERE name = ? AND active = 1 ORDER BY id LIMIT 1', [$name]);
+        $tenantId = TenantResolver::getId();
+        return Database::one('SELECT * FROM services WHERE name = ? AND active = 1 AND tenant_id = ? ORDER BY id LIMIT 1', [$name, $tenantId]);
     }
 
     public static function save(array $d, int $id = 0): int
     {
+        $tenantId = TenantResolver::getId();
         $name = mb_substr(trim($d['name'] ?? ''), 0, 120);
         $duration = mb_substr(trim($d['duration'] ?? ''), 0, 40);
         $fields = [
+            'tenant_id' => $tenantId,
             'category_id' => ($d['category_id'] ?? '') === '' ? null : max(0, (int) $d['category_id']),
             'name' => $name,
             'description' => mb_substr(trim($d['description'] ?? ''), 0, 500),
@@ -83,8 +94,8 @@ final class Service
         if ($id > 0) {
             Database::exec(
                 'UPDATE services SET category_id=?, name=?, description=?, duration=?, duration_min=?, price=?,
-                 deposit=?, popular=?, sort=?, active=? WHERE id=?',
-                [...array_values($fields), $id]
+                 deposit=?, popular=?, sort=?, active=? WHERE id=? AND tenant_id=?',
+                [...array_values($fields), $id, $tenantId]
             );
             return $id;
         }
@@ -97,12 +108,15 @@ final class Service
 
     public static function delete(int $id): void
     {
-        Database::exec('DELETE FROM services WHERE id = ?', [$id]);
+        $tenantId = TenantResolver::getId();
+        Database::exec('DELETE FROM services WHERE id = ? AND tenant_id = ?', [$id, $tenantId]);
     }
 
     public static function saveCategory(array $d, int $id = 0): int
     {
+        $tenantId = TenantResolver::getId();
         $fields = [
+            'tenant_id' => $tenantId,
             'name' => mb_substr(trim($d['name'] ?? ''), 0, 60),
             'blurb' => mb_substr(trim($d['blurb'] ?? ''), 0, 255),
             'sort' => (int) ($d['sort'] ?? 0),
@@ -112,12 +126,12 @@ final class Service
             return $id;
         }
         if ($id > 0) {
-            Database::exec('UPDATE service_categories SET name=?, blurb=?, sort=?, active=? WHERE id=?',
-                [...array_values($fields), $id]);
+            Database::exec('UPDATE service_categories SET name=?, blurb=?, sort=?, active=? WHERE id=? AND tenant_id=?',
+                [...array_values($fields), $id, $tenantId]);
             return $id;
         }
         return Database::insert(
-            'INSERT INTO service_categories (name, blurb, sort, active) VALUES (?,?,?,?)',
+            'INSERT INTO service_categories (tenant_id, name, blurb, sort, active) VALUES (?,?,?,?,?)',
             array_values($fields)
         );
     }
@@ -125,10 +139,11 @@ final class Service
     /** Categories in use cannot be dropped; services fall back to NULL category. */
     public static function deleteCategory(int $id): bool
     {
-        if ((int) (Database::value('SELECT COUNT(*) FROM services WHERE category_id = ?', [$id]) ?? 0) > 0) {
+        $tenantId = TenantResolver::getId();
+        if ((int) (Database::value('SELECT COUNT(*) FROM services WHERE category_id = ? AND tenant_id = ?', [$id, $tenantId]) ?? 0) > 0) {
             return false;
         }
-        return Database::exec('DELETE FROM service_categories WHERE id = ?', [$id]) > 0;
+        return Database::exec('DELETE FROM service_categories WHERE id = ? AND tenant_id = ?', [$id, $tenantId]) > 0;
     }
 
     /** "4 to 6 hours" => 360, "45 min" => 45, "1.5 hours" => 90. */

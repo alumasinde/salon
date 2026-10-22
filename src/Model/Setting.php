@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Salon\Model;
 
 use Salon\DB\Database;
+use Salon\Http\TenantResolver;
 
 /** Site-wide key/value configuration, cached per request. */
 final class Setting
@@ -14,14 +15,20 @@ final class Setting
     public static function all(): array
     {
         if (self::$cache === null) {
-            self::$cache = array_column(Database::all('SELECT `key`, `value` FROM settings'), 'value', 'key');
+            $tenantId = TenantResolver::getId();
+            self::$cache = array_column(
+                Database::all('SELECT `key`, `value` FROM settings WHERE tenant_id = ?', [$tenantId]),
+                'value',
+                'key'
+            );
         }
         return self::$cache;
     }
 
     public static function rows(): array
     {
-        return Database::all('SELECT `key`, `value`, `label` FROM settings ORDER BY `key`');
+        $tenantId = TenantResolver::getId();
+        return Database::all('SELECT `key`, `value`, `label` FROM settings WHERE tenant_id = ? ORDER BY `key`', [$tenantId]);
     }
 
     public static function get(string $key, string $default = ''): string
@@ -44,10 +51,11 @@ final class Setting
 
     public static function set(string $key, string $value, string $label = ''): void
     {
+        $tenantId = TenantResolver::getId();
         Database::exec(
-            'INSERT INTO settings (`key`, `value`, `label`) VALUES (?,?,?)
+            'INSERT INTO settings (`key`, `value`, `label`, tenant_id) VALUES (?,?,?,?)
              ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
-            [$key, $value, $label]
+            [$key, $value, $label, $tenantId]
         );
         self::$cache = null;
     }
@@ -64,7 +72,8 @@ final class Setting
 
     public static function createIfMissing(string $key, string $value, string $label): void
     {
-        Database::exec('INSERT IGNORE INTO settings (`key`, `value`, `label`) VALUES (?,?,?)', [$key, $value, $label]);
+        $tenantId = TenantResolver::getId();
+        Database::exec('INSERT IGNORE INTO settings (`key`, `value`, `label`, tenant_id) VALUES (?,?,?,?)', [$key, $value, $label, $tenantId]);
         self::$cache = null;
     }
 }
