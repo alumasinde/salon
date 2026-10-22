@@ -1,0 +1,12 @@
+# Protects everything above public/ when the document root is htdocs/salon.
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^$ public/ [L]
+  RewriteRule (.*) public/$1 [L]
+</IfModule>
+
+<FilesMatch "^\.env|\.md$">
+  Require all denied
+</FilesMatch>
